@@ -2,6 +2,7 @@ import React, { useState, useEffect, type FormEvent, type ChangeEvent } from 're
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Signup as signupApi } from '../services/userApi';
+import SignupFormSchema from '../schemas/SignupFormSchema';
 
 interface FormData {
     username: string;
@@ -49,71 +50,60 @@ const Signup: React.FC = () => {
     const navigate = useNavigate();
 
     const validateForm = (showErrors: boolean = true): boolean => {
-        const newErrors: FormErrors = {};
+        const result = SignupFormSchema.safeParse(formData);
 
-        if (!formData.username.trim()) {
-            if (showErrors && touchedFields.username) {
-                newErrors.username = 'Username is required';
+        if (!result.success) {
+            if (showErrors) {
+                const fieldErrors: Record<string, string> = {};
+                result.error.issues.forEach((err) => {
+                    if (err.path[0]) {
+                        fieldErrors[err.path[0] as string] = err.message;
+                    }
+                });
+                setErrors(fieldErrors);
             }
-        }
-
-        if (!formData.email.trim()) {
-            if (showErrors && touchedFields.email) {
-                newErrors.email = 'Email is required';
-            }
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-            if (showErrors && touchedFields.email) {
-                newErrors.email = 'Invalid email format';
-            }
-        }
-
-        if (!formData.phoneNumber.trim()) {
-            if (showErrors && touchedFields.phoneNumber) {
-                newErrors.phoneNumber = 'Phone number is required';
-            }
-        } else if (!/^\+?[\d\s-]{10,}$/.test(formData.phoneNumber)) {
-            if (showErrors && touchedFields.phoneNumber) {
-                newErrors.phoneNumber = 'Invalid phone number format';
-            }
-        }
-
-        if (!formData.password) {
-            if (showErrors && touchedFields.password) {
-                newErrors.password = 'Password is required';
-            }
-        } else if (formData.password.length < 8) {
-            if (showErrors && touchedFields.password) {
-                newErrors.password = 'Password must be at least 8 characters';
-            }
-        }
-
-        if (formData.password !== formData.confirmPassword) {
-            if (showErrors && touchedFields.confirmPassword && formData.confirmPassword) {
-                newErrors.confirmPassword = 'Passwords do not match';
-            }
+            return false;
         }
 
         if (showErrors) {
-            setErrors(newErrors);
+            setErrors({});
         }
 
-        // Check if form is valid (regardless of touched state for submit button)
-        const isValid = formData.username.trim() !== '' &&
-                        formData.email.trim() !== '' &&
-                        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email) &&
-                        formData.phoneNumber.trim() !== '' &&
-                        /^\+?[\d\s-]{10,}$/.test(formData.phoneNumber) &&
-                        formData.password !== '' &&
-                        formData.password.length >= 8 &&
-                        formData.password === formData.confirmPassword;
-
-        return isValid;
+        return true;
     };
 
-    // Validate form whenever formData or touchedFields changes
+    // Validate form whenever formData changes, but only show errors for touched fields
     useEffect(() => {
-        setIsFormValid(validateForm());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        const result = SignupFormSchema.safeParse(formData);
+        setIsFormValid(result.success);
+
+        if (!result.success) {
+            const fieldErrors: Record<string, string> = {};
+            result.error.issues.forEach((err) => {
+                const fieldName = err.path[0] as string;
+                // Only add error if the field has been touched
+                if (fieldName && touchedFields[fieldName as keyof TouchedFields]) {
+                    fieldErrors[fieldName] = err.message;
+                }
+            });
+            
+            // Update errors: keep API errors, clear untouched field errors, set touched field errors
+            setErrors(prev => {
+                const newErrors: FormErrors = { api: prev.api };
+                
+                // Only add field errors for touched fields that have validation errors
+                Object.keys(fieldErrors).forEach(field => {
+                    newErrors[field as keyof FormErrors] = fieldErrors[field];
+                });
+                
+                return newErrors;
+            });
+        } else {
+            // Clear only field errors when form becomes valid, keep API errors
+            setErrors(prev => ({
+                api: prev.api
+            }));
+        }
     }, [formData, touchedFields]);
 
     const handleSubmit = async (e: FormEvent<HTMLButtonElement>): Promise<void> => {
@@ -136,6 +126,7 @@ const Signup: React.FC = () => {
                     email: formData.email,
                     phoneNumber: formData.phoneNumber,
                     password: formData.password,
+                    confirmPassword: formData.confirmPassword,
                 });
 
                 if (response.success) {
@@ -188,6 +179,14 @@ const Signup: React.FC = () => {
             ...prev,
             [name]: value
         }));
+        
+        // Mark field as touched when user starts typing
+        if (value.length > 0 && !touchedFields[name as keyof TouchedFields]) {
+            setTouchedFields(prev => ({
+                ...prev,
+                [name]: true
+            }));
+        }
     };
 
     const handleBlur = (fieldName: keyof TouchedFields) => {

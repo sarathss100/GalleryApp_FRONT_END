@@ -2,6 +2,7 @@ import React, { useState, useEffect, type FormEvent, type ChangeEvent } from 're
 import { SignIn } from '../services/userApi';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
+import SigninFormSchema from '../schemas/SigninFormSchema.ts';
 
 // Define form data interface for login
 interface FormData {
@@ -39,22 +40,26 @@ const Login: React.FC = () => {
   }, [formData]);
 
   const validateForm = (): boolean => {
-    const newErrors: FormErrors = {};
-    
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Invalid email format';
-    }
-    
-    if (!formData.password) {
-      newErrors.password = 'Password is required';
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'Password must be at least 8 characters';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    const result = SigninFormSchema.safeParse(formData); 
+
+        if (!result.success) {
+            if (errors) {
+                const fieldErrors: Record<string, string> = {};
+                result.error.issues.forEach((err) => {
+                    if (err.path[0]) {
+                        fieldErrors[err.path[0] as string] = err.message;
+                    }
+                });
+                setErrors(fieldErrors);
+            }
+            return false;
+        }
+
+      if (errors) {
+          setErrors({});
+      }
+
+    return true;
   };
 
   const handleSubmit = async (e: FormEvent<HTMLButtonElement>): Promise<void> => {

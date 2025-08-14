@@ -2,7 +2,7 @@ import React, { useState, useEffect, type FormEvent, type ChangeEvent } from 're
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Signup as signupApi } from '../services/userApi';
-import SignupFormSchema from '../schemas/SignupFormSchema';
+import SignupFormSchema from '../schemas/SignupFormSchema.ts';
 
 interface FormData {
     username: string;
@@ -50,7 +50,7 @@ const Signup: React.FC = () => {
     const navigate = useNavigate();
 
     const validateForm = (showErrors: boolean = true): boolean => {
-        const result = SignupFormSchema.safeParse(formData);
+        const result = SignupFormSchema.safeParse(formData); 
 
         if (!result.success) {
             if (showErrors) {

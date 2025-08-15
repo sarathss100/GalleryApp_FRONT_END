@@ -1,7 +1,8 @@
-import React, { useState, useEffect, type FormEvent, type ChangeEvent } from 'react';
+import React, { useState, useEffect, type FormEvent, type ChangeEvent, useCallback } from 'react';
 import { forgotPassword } from '../services/userApi';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
+import ResetPasswordFormSchema from '../schemas/ResetPasswordFormSchema';
 
 // Define form data interface
 interface FormData {
@@ -28,40 +29,51 @@ const ForgotPassword: React.FC = () => {
   });
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isFormValid, setIsFormValid] = useState<boolean>(false);
+  const [hasSubmitAttempt, setHasSubmitAttempt] = useState<boolean>(false);
   const navigate = useNavigate();
 
-  const validateForm = (showErrors: boolean = true): boolean => {
-    const newErrors: FormErrors = {};
-    
-    if (!formData.email.trim()) {
-      if (showErrors && touchedFields.email) {
-        newErrors.email = 'Email is required';
+  const validateForm = useCallback((showErrors: boolean = false): boolean => {
+    const result = ResetPasswordFormSchema.safeParse(formData); 
+
+    if (!result.success) {
+      if (showErrors) {
+        const fieldErrors: Record<string, string> = {};
+        result.error.issues.forEach((err) => {
+          if (err.path[0]) {
+            fieldErrors[err.path[0] as string] = err.message;
+          }
+        });
+        setErrors(prev => ({ ...prev, ...fieldErrors }));
       }
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      if (showErrors && touchedFields.email) {
-        newErrors.email = 'Invalid email format';
-      }
+      return false;
     }
-    
+
     if (showErrors) {
-      setErrors(newErrors);
+      // Clear field errors but keep API errors
+      setErrors(prev => ({ api: prev.api }));
     }
 
-    // Check if form is valid (regardless of touched state for submit button)
-    const isValid = formData.email.trim() !== '' &&
-                    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email);
+    return true;
+  }, [formData]);
 
-    return isValid;
-  };
-
-  // Validate form whenever formData or touchedFields changes
+  // Only validate for form validity (not showing errors)
   useEffect(() => {
-    setIsFormValid(validateForm());
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData, touchedFields]);
+    const isValid = validateForm(false);
+    setIsFormValid(isValid);
+  }, [formData, validateForm]);
+
+  // Show errors only for touched fields or after submit attempt
+  useEffect(() => {
+    if (hasSubmitAttempt || touchedFields.email) {
+      validateForm(true);
+    }
+  }, [formData, touchedFields, hasSubmitAttempt, validateForm]);
 
   const handleSubmit = async (e: FormEvent<HTMLButtonElement>): Promise<void> => {
     e.preventDefault();
+    
+    // Mark that a submit attempt has been made
+    setHasSubmitAttempt(true);
     
     // Mark field as touched on submit attempt
     setTouchedFields({
@@ -78,10 +90,11 @@ const ForgotPassword: React.FC = () => {
           navigate(`/reset-password/${formData.email}`);
           setFormData({ email: '' });
           setTouchedFields({ email: false });
+          setHasSubmitAttempt(false);
         } 
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (error) {
-        setErrors({ api: 'An error occurred. Please try again.' });
+        setErrors(prev => ({ ...prev, api: 'An error occurred. Please try again.' }));
       } finally {
         setIsLoading(false);
       }
@@ -94,6 +107,11 @@ const ForgotPassword: React.FC = () => {
       ...prev,
       [name]: value
     }));
+    
+    // Clear API errors when user starts typing
+    if (errors.api) {
+      setErrors(prev => ({ ...prev, api: undefined }));
+    }
   };
 
   const handleBlur = (fieldName: keyof TouchedFields) => {
@@ -101,6 +119,11 @@ const ForgotPassword: React.FC = () => {
       ...prev,
       [fieldName]: true
     }));
+  };
+
+  // Only show field errors if the field has been touched or submit was attempted
+  const shouldShowFieldError = (fieldName: keyof TouchedFields): boolean => {
+    return touchedFields[fieldName] || hasSubmitAttempt;
   };
 
   return (
@@ -157,7 +180,7 @@ const ForgotPassword: React.FC = () => {
               />
               <div className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-emerald-400 to-teal-400 transform scale-x-0 group-focus-within:scale-x-100 transition-transform duration-300 rounded-full"></div>
             </div>
-            {errors.email && (
+            {errors.email && shouldShowFieldError('email') && (
               <p className="text-red-400 text-xs mt-2 flex items-center gap-2">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
